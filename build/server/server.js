@@ -12,7 +12,11 @@ export class FluoraMcpServer {
     constructor() {
         this.server = new McpServer({
             name: 'fluora-mcp-server',
-            version: '1.0.0'
+            version: '1.0.0',
+            capabilities: {
+                sampling: {},
+                elicitation: {}
+            }
         });
         if (this.transport === 'stdio') {
             this.server.server.oninitialized = () => {

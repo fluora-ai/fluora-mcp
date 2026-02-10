@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Logger } from '../../providers/winston-logger.js';
+import { PostHogAnalytics } from '../../providers/posthog/index.js';
 import { ServiceExecutionService } from '../services/service-execution.service.js';
 import { ServiceRegistryService } from '../services/service-registry.service.js';
 import getMcpServers from '../services/mcp-agents.js';
@@ -24,7 +25,7 @@ if (Constants.ENABLE_REQUEST_ELICITATION) {
     UseServiceSchema.paymentConfirmed = z
         .boolean()
         .optional()
-        .describe('Set `true` after user confirms payment, `false` to cancel, or omit for estimates. Show price first.');
+        .describe('Set `true` ONLY after user explicitly confirms payment, `false` to cancel, or omit for initial cost check. Do NOT set to true automatically.');
 }
 export const UseServiceTool = {
     name: 'useService',
@@ -37,7 +38,9 @@ export const UseServiceTool = {
     - Parameter validation and error handling
     - Complete execution with real-time status updates
 
-    Before using this tool, you must prompt the user to confirm the service execution, including the estimated cost and payment method.
+    ${Constants.ENABLE_REQUEST_ELICITATION
+        ? `⚠️ **IMPORTANT**: When the cost is above the threshold (${Constants.ELICITATION_THRESHOLD}), this tool will FIRST return a confirmation request. Only call again with paymentConfirmed: true after the user explicitly confirms the payment.`
+        : ''}
         
     ✨ What it does automatically:
     - Validates service availability and parameters
@@ -57,15 +60,15 @@ export const UseServiceTool = {
     - serverId: The server's unique identifier
     - params: Object containing service-specific parameters
     ${Constants.ENABLE_UNSAFE_DIRECT_ACCESS ? '- customServerUrl (optional): Directly explore a server by its URL. This is a **potentially unsafe** operation. Development intent is to allow for quick testing and exploration.' : ''}
-    ${Constants.ENABLE_REQUEST_ELICITATION ? '- paymentConfirmed (required): Set `true` after user confirms payment, `false` to cancel, or omit for estimates. Show price first.' : ''}
+    ${Constants.ENABLE_REQUEST_ELICITATION ? '- paymentConfirmed (optional): Set `true` ONLY after user explicitly confirms payment, `false` to cancel, or omit for initial cost check.' : ''}
 
 
     💡 Usage Flow:
     1. First run 'exploreServices' to discover available services
     2. Copy the serviceId, serverUrl, and serverId from the desired service
     3. Prepare the params object according to the service's parameter schema
-    4. Confirm the payment amount and method when prompted
-    5. Execute this tool with all the information
+    ${Constants.ENABLE_REQUEST_ELICITATION ? '4. Call this tool WITHOUT paymentConfirmed to get cost estimate and confirmation request' : ''}
+    ${Constants.ENABLE_REQUEST_ELICITATION ? '5. If confirmation is required, wait for user to confirm, then call again with paymentConfirmed: true' : '4. Execute this tool with all the information'}
     
     ⚡ Example:
     After exploreServices shows a PDF conversion service, use:
@@ -79,11 +82,20 @@ export const UseServiceTool = {
     schema: UseServiceSchema,
     execute: async ({ serviceId, serverUrl, serverId, params, customServerUrl, paymentConfirmed }) => {
         const logger = new Logger();
+        const analytics = new PostHogAnalytics();
         const serviceExecution = new ServiceExecutionService();
         const serviceRegistry = new ServiceRegistryService();
         const startTime = Date.now();
+        const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         logger.info(`Starting service execution for ${serviceId} on ${serverUrl}`);
         try {
+            // Track execution start
+            analytics.trackServiceExecution({
+                serviceId,
+                serverId,
+                serverUrl,
+                sessionId
+            });
             // Step 1: Validate input parameters
             if (!serviceId || !serverUrl || !serverId) {
                 throw new Error('Missing required parameters: serviceId, serverUrl, and serverId are all required');
@@ -133,27 +145,35 @@ export const UseServiceTool = {
                 if (paymentConfirmed === undefined &&
                     costEstimate.amount >= Constants.ELICITATION_THRESHOLD) {
                     logger.info(`Request elicitation enabled. Payment confirmation required to execute service ${serviceId}...`);
+                    // Track payment confirmation request
+                    analytics.trackPaymentConfirmation({
+                        serviceId,
+                        confirmed: false,
+                        amount: costEstimate.amount,
+                        paymentMethod: costEstimate.paymentMethod,
+                        sessionId
+                    });
                     // Return a confirmation request instead of automatically proceeding
                     return {
                         content: [
                             {
                                 type: 'text',
-                                text: JSON.stringify({
-                                    requiresConfirmation: true,
-                                    serviceInfo: {
-                                        id: service.id,
-                                        name: service.name,
-                                        description: service.description,
-                                        serverName: service.serverInfo.serverName
-                                    },
-                                    costEstimate: {
-                                        amount: costEstimate.amount,
-                                        currency: costEstimate.currency,
-                                        paymentMethod: costEstimate.paymentMethod
-                                    },
-                                    message: `⚠️ Payment Confirmation Required: This will execute service "${service.name}" at a cost of ${costEstimate.amount} ${costEstimate.currency} via ${costEstimate.paymentMethod}. Please confirm you want to proceed with the payment.`,
-                                    instructions: 'To proceed, please call this tool again with the same parameters and add `paymentConfirmed: true` to the request.'
-                                }, null, 2)
+                                text: `⚠️ **PAYMENT CONFIRMATION REQUIRED** ⚠️
+
+Service: ${service.name}
+Cost: ${costEstimate.amount} ${costEstimate.currency}
+Payment Method: ${costEstimate.paymentMethod}
+Server: ${service.serverInfo.serverName}
+
+This service execution requires your explicit confirmation because the cost (${costEstimate.amount}) is above the elicitation threshold (${Constants.ELICITATION_THRESHOLD}).
+
+**DO NOT PROCEED AUTOMATICALLY** - Wait for user confirmation.
+
+To proceed with this payment, the user must explicitly confirm. Only then should you call the useService tool again with the same parameters plus \`paymentConfirmed: true\`.
+
+To cancel, call the useService tool again with the same parameters plus \`paymentConfirmed: false\`.
+
+**IMPORTANT**: Do not automatically set paymentConfirmed to true. Wait for the user's explicit confirmation.`
                             }
                         ]
                     };
@@ -161,6 +181,14 @@ export const UseServiceTool = {
                 else if (paymentConfirmed === false) {
                     // User explicitly declined payment
                     logger.info(`Payment explicitly declined for service execution ${serviceId}`);
+                    // Track payment decline
+                    analytics.trackPaymentConfirmation({
+                        serviceId,
+                        confirmed: false,
+                        amount: costEstimate.amount,
+                        paymentMethod: costEstimate.paymentMethod,
+                        sessionId
+                    });
                     return {
                         content: [
                             {
@@ -180,9 +208,21 @@ export const UseServiceTool = {
                         ]
                     };
                 }
-                else {
+                else if (paymentConfirmed === true) {
                     // paymentConfirmed === true, proceed with execution
                     logger.info(`Payment confirmation received for service ${serviceId}. Proceeding with execution...`);
+                    // Track payment confirmation
+                    analytics.trackPaymentConfirmation({
+                        serviceId,
+                        confirmed: true,
+                        amount: costEstimate.amount,
+                        paymentMethod: costEstimate.paymentMethod,
+                        sessionId
+                    });
+                }
+                else {
+                    // paymentConfirmed is undefined but cost is below threshold, proceed automatically
+                    logger.info(`Cost ${costEstimate.amount} is below elicitation threshold ${Constants.ELICITATION_THRESHOLD}. Proceeding automatically...`);
                 }
             }
             // Step 7: Execute the service
@@ -197,6 +237,18 @@ export const UseServiceTool = {
             const totalExecutionTime = Date.now() - startTime;
             if (result.success) {
                 logger.info(`Service ${serviceId} executed successfully in ${totalExecutionTime}ms`);
+                // Track successful execution
+                analytics.trackServiceExecution({
+                    serviceId,
+                    serverId,
+                    serverUrl,
+                    executionTime: totalExecutionTime,
+                    success: true,
+                    paymentMethod: service.price.paymentMethod,
+                    amount: service.price.amount,
+                    transactionCost: result.transactionCost,
+                    sessionId
+                });
                 return {
                     content: [
                         {
@@ -224,6 +276,16 @@ export const UseServiceTool = {
             }
             else {
                 logger.error(`Service ${serviceId} execution failed: ${result.error}`);
+                // Track failed execution
+                analytics.trackServiceExecution({
+                    serviceId,
+                    serverId,
+                    serverUrl,
+                    executionTime: totalExecutionTime,
+                    success: false,
+                    error: result.error,
+                    sessionId
+                });
                 return {
                     content: [
                         {
@@ -248,6 +310,23 @@ export const UseServiceTool = {
         catch (error) {
             const totalExecutionTime = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            // Track error
+            analytics.trackError(error instanceof Error ? error : new Error(errorMessage), {
+                tool: 'useService',
+                serviceId,
+                serverId,
+                sessionId
+            });
+            // Track failed execution
+            analytics.trackServiceExecution({
+                serviceId,
+                serverId,
+                serverUrl,
+                executionTime: totalExecutionTime,
+                success: false,
+                error: errorMessage,
+                sessionId
+            });
             logger.error(`Service execution failed for ${serviceId}: ${errorMessage}`);
             return {
                 content: [
