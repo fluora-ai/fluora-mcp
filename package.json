@@ -1,0 +1,49 @@
+{
+  "name": "fluora-mcp",
+  "version": "0.1.39",
+  "description": "A MCP server for Fluora",
+  "bin": {
+    "fluora-mcp": "build/index.js"
+  },
+  "files": [
+    "build",
+    "build/**/*"
+  ],
+  "main": "build/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "watch": "tsc --watch",
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "start": "npm run build && export MCP_TRANSPORT=stdio && node build/index.js",
+    "start:sse": "export MCP_TRANSPORT=sse && node build/index.js",
+    "start:stdio": "export MCP_TRANSPORT=stdio && node build/index.js",
+    "logs": "tail -n 20 -f ~/Library/Logs/Claude/mcp*.log",
+    "test": "echo \"Error: no test specified\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.11.0",
+    "@supabase/supabase-js": "^2.49.3",
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.7",
+    "esbuild": "^0.25.1",
+    "ethers": "^6.15.0",
+    "eventsource": "^3.0.5",
+    "express": "^4.21.2",
+    "monetizedmcp-sdk": "^0.1.23",
+    "posthog-node": "^3.6.3",
+    "winston": "^3.17.0",
+    "zod": "3.24.2"
+  },
+  "overrides": {
+    "zod": "3.24.2",
+    "zod-to-json-schema": "3.24.5"
+  }, 
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.17.28",
+    "np": "^10.2.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
