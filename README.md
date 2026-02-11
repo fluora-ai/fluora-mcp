@@ -1,5 +1,7 @@
 # 🌟 Fluora MCP - Monetized AI Agent Services
 
+
+
 [![npm version](https://badge.fury.io/js/fluora-mcp.svg)](https://www.npmjs.com/package/fluora-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -9,62 +11,145 @@ Fluora MCP enables AI agents to discover, access, and pay for monetized services
 
 ## 🚀 Quick Start
 
-```bash
-# Add to Vs Code
-{
-  "servers": {
-    "fluora": {
-      "command": "npx",
-      "args": ["fluora-mcp"]
-    }
-  }
-}
+### Claude Desktop
 
-# Add to Claude Desktop config
+Edit your Claude Desktop config file:
+
+- **Mac**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
 {
   "mcpServers": {
-    "fluora":
+    "fluora-registry": {
       "command": "npx",
-      "args": ["fluora-mcp"]
+      "args": ["fluora-mcp"],
+      "env": {
+        "ENABLE_REQUEST_ELICITATION": "true",
+        "ELICITATION_THRESHOLD": "0.01"
+      }
     }
   }
 }
 ```
 
-```bash
-# Install globally
-npm install -g fluora-mcp
+### VS Code (Cline/Continue Extension)
 
-# Run and auto-generate wallet
-fluora-mcp
+Add to your VS Code MCP settings:
 
-# Add to Claude Desktop config
+```json
 {
   "mcpServers": {
-    "fluora": {
-      "command": "fluora-mcp"
+    "fluora-registry": {
+      "command": "npx",
+      "args": ["fluora-mcp"],
+      "env": {
+        "ENABLE_REQUEST_ELICITATION": "true",
+        "ELICITATION_THRESHOLD": "0.01"
+      }
     }
   }
 }
 ```
+
+**Note:** Exact location depends on your MCP extension (Cline vs Continue).
+
+### 🦞 OpenClaw Integration
+
+Install from GitHub for best compatibility:
+
+```bash
+# Clone and build
+git clone https://github.com/fluora-ai/fluora-mcp.git
+cd fluora-mcp
+npm install
+npm run build
+
+
+# Add to mcporter
+mcporter config add fluora --command "node /path/to/fluora-mcp/build/index.js"
+
+# Verify installation
+
+mcporter list fluora
+mcporter call fluora.exploreServices category=PDF
+```
+
+**OpenClaw users:** The MCP server will be automatically available to your agent after adding it to mcporter.
+
+## 🎬 What Happens After Install
+
+When you first run `fluora-mcp`:
+
+1. ✅ A wallet is automatically generated at `~/.fluora/wallets.json`
+2. ✅ The MCP server starts and loads the services on the fluora registry 
+3. ✅ Your wallet addresses are ready:
+
+   - Testnet (Base Sepolia): Check `~/.fluora/wallets.json`
+   - Mainnet (Base): Check `~/.fluora/wallets.json`
+
+
+**⚠️ IMPORTANT: Backup your wallet!**
+
+```bash
+# Backup your wallet file (contains private keys)
+cp ~/.fluora/wallets.json ~/fluora-wallet-backup.json
+```
+
+### Next Steps:
+
+1. Fund your wallet (see Funding Your Wallet below)
+2. Restart Claude Desktop/VS Code to load the MCP server
+3. Ask your AI: "What services are available on Fluora?"
+
+## 💰 Funding Your Wallet
+
+To use paid services, you need USDC in your wallet.
+
+
+### For Production (Mainnet)
+
+1. Get your mainnet address:
+   ```bash
+   cat ~/.fluora/wallets.json | grep -A 1 MAINNET
+   ```
+
+2. Transfer USDC on Base network
+   - **Recommended:** Transfer $1 to start
+   - Network: Base (not Ethereum mainnet!)
+   - Token: USDC
+
+**💡 Tip:** Most services cost $0.001-0.02 per call, so $1 goes a long way!
 
 ## ✨ What You Get
 
-- **🔍 Service Discovery**: Access 50+ monetized services (PDF, DeFi, Data, AI)
+- **🔍 Service Discovery**: Access 76+ monetized services ([Browse All](https://fluora.ai/services))
+
+  - PDF Generation & Conversion
+  - DeFi Data & Analytics (Solana, Base)
+  - Web Scraping & Screenshots
+  - AI Research & Analysis
+  - IG/Twitter Scraping 
+  - And more...
+
 - **💳 Auto Payments**: Seamless USDC transactions on Base blockchain
-- **🤖 AI Integration**: Works with Claude Desktop, VS Code, and any MCP client
+- **🤖 AI Integration**: Works with Claude Desktop, VS Code, OpenClaw, and any MCP client
 - **🔐 Secure Wallets**: Auto-generated private keys stored locally
 - **📊 Real-time**: Live service status, pricing, and availability
+
 
 ## 🎯 Core Features
 
 ### Service Discovery
 
 ```bash
+
 # Ask your AI agent:
-"What PDF services are available?"
-"Show me DeFi operations under $1"
-"Take a screenshot of this website"
+
+"What PDF services are available via Fluora?"
+"Show me DeFi operations under $1 on Fluora"
+"Take a screenshot of <website URL> using Fluora "
+
 ```
 
 ### Automatic Payments
@@ -81,17 +166,32 @@ fluora-mcp
 - **Rich Logging**: Winston-based logging with configurable levels
 - **Error Handling**: Graceful degradation and detailed reporting
 
+
+
 ## 🛠 Configuration
+
+
 
 ### Environment Variables
 
+
+
 ```bash
-MCP_TRANSPORT=stdio              		# stdio | sse
+
+MCP_TRANSPORT=stdio              		# stdio | sse
 FLUORA_API_URL=https://api.fluora.ai/api # For local development
-LOG_LEVEL=INFO                   		# DEBUG | INFO | WARN | ERROR
+LOG_LEVEL=INFO                   		# DEBUG | INFO | WARN | ERROR
 ENABLE_UNSAFE_DIRECT_ACCESS=false		# CAUTION! Only for development intent
 ENABLE_REQUEST_ELICITATION=true			# Usage control over services
+
 ```
+
+**Where to put env vars:**
+- **Claude Desktop**: Set in your shell profile (`~/.zshrc` or `~/.bashrc`)
+- **VS Code**: Use extension settings or `.env` file
+- **OpenClaw**: Set in your shell or OpenClaw config
+
+
 
 ### Wallet Setup
 
@@ -99,16 +199,52 @@ Wallets auto-generate at `~/.fluora/wallets.json`:
 
 ```json
 {
-  "USDC_BASE_SEPOLIA": {
-    "privateKey": "0x...",
-    "address": "0x..."
-  },
-  "USDC_BASE_MAINNET": {
-    "privateKey": "0x...",
-    "address": "0x..."
-  }
+  "USDC_BASE_SEPOLIA": {
+    "privateKey": "0x...",
+    "address": "0x..."
+  },
+  "USDC_BASE_MAINNET": {
+    "privateKey": "0x...",
+    "address": "0x..."
+  }
 }
 ```
+
+
+## 🔧 Troubleshooting
+### Server Not Starting
+
+```bash
+# Check if wallet exists
+ls -la ~/.fluora/wallets.json
+# Check logs
+tail -f ~/.fluora/fluora-mcp.log
+```
+
+### "No Funds" Error
+- Check your wallet balance on Base Sepolia/Mainnet
+- Most services cost $0.001-0.02
+- Fund with testnet USDC first to test
+
+### Claude Desktop Not Seeing Tools
+
+1. Verify config: `cat ~/Library/Application\ Support/Claude/claude_desktop_config.json`
+2. Restart Claude Desktop completely (quit and reopen)
+3. Check Developer Tools (Cmd+Option+I on Mac) for errors
+
+### Services Not Loading
+
+```bash
+# Test server directly
+npx fluora-mcp
+
+# Should show: "Request elicitation for MCP services (Human-In-The-Loop for purchase), ENABLED"
+# Should list 76+ services
+
+```
+
+### Deprecation Warnings
+These warnings are non-critical but will be addressed in future updates.
 
 ## 🔐 Security
 
@@ -116,6 +252,7 @@ Wallets auto-generate at `~/.fluora/wallets.json`:
 - **Blockchain Native**: All payments verified on-chain
 - **X402 Protocol**: Standardized payment verification
 - **No Data Retention**: Service data not stored or logged
+- **⚠️ BACKUP YOUR WALLET**: Losing `~/.fluora/wallets.json` = losing funds
 
 ## 🤝 Support
 
@@ -124,7 +261,6 @@ Wallets auto-generate at `~/.fluora/wallets.json`:
 - **Contact**: [contact@fluora.ai](mailto:contact@fluora.ai)
 
 ## 📄 License
-
 MIT License - Built with ❤️ for the AI economy
 
 ---
@@ -133,4 +269,5 @@ MIT License - Built with ❤️ for the AI economy
 
 ```bash
 npm install -g fluora-mcp && fluora-mcp
+
 ```
